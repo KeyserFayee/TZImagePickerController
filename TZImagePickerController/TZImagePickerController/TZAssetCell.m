@@ -250,6 +250,13 @@
     self.showSelectBtn = self.showSelectBtn;
 }
 
+#pragma mark - public methods
+- (void)updatePhotoBtnState:(BOOL)state {
+    self.selectImageView.image = state ? [UIImage imageNamedFromMyBundle:self.photoSelImageName] : [UIImage imageNamedFromMyBundle:self.photoDefImageName];
+}
+
+
+
 @end
 
 @interface TZAlbumCell ()

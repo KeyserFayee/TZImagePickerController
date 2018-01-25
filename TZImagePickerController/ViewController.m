@@ -267,6 +267,7 @@
     imagePickerVc.showSelectBtn = NO;
     imagePickerVc.allowCrop = self.allowCropSwitch.isOn;
     imagePickerVc.needCircleCrop = self.needCircleCropSwitch.isOn;
+    imagePickerVc.classifyByDate = YES;
     // 设置竖屏下的裁剪尺寸
     NSInteger left = 30;
     NSInteger widthHeight = self.view.tz_width - 2 * left;

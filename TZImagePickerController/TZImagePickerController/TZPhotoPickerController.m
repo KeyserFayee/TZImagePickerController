@@ -11,13 +11,14 @@
 #import "TZPhotoPreviewController.h"
 #import "TZAssetCell.h"
 #import "TZAssetModel.h"
+#import "TZAssetHeaderView.h"
 #import "UIView+Layout.h"
 #import "TZImageManager.h"
 #import "TZVideoPlayerController.h"
 #import "TZGifPhotoPreviewController.h"
 #import "TZLocationManager.h"
 
-@interface TZPhotoPickerController ()<UICollectionViewDataSource,UICollectionViewDelegate,UIImagePickerControllerDelegate,UINavigationControllerDelegate,UIAlertViewDelegate> {
+@interface TZPhotoPickerController ()<UICollectionViewDataSource,UICollectionViewDelegate,UIImagePickerControllerDelegate,UINavigationControllerDelegate,UIAlertViewDelegate,TZAssetHeaderViewDelegate> {
     NSMutableArray *_models;
     
     UIView *_bottomToolBar;
@@ -44,6 +45,7 @@
 
 static CGSize AssetGridThumbnailSize;
 static CGFloat itemMargin = 5;
+static CGFloat contentInsetSides = 15;
 
 @implementation TZPhotoPickerController
 
@@ -75,7 +77,7 @@ static CGFloat itemMargin = 5;
     [super viewDidLoad];
     TZImagePickerController *tzImagePickerVc = (TZImagePickerController *)self.navigationController;
     _isSelectOriginalPhoto = tzImagePickerVc.isSelectOriginalPhoto;
-    _shouldScrollToBottom = YES;
+    _shouldScrollToBottom = NO;
     self.view.backgroundColor = [UIColor whiteColor];
     self.navigationItem.title = _model.name;
     self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:tzImagePickerVc.cancelBtnTitleStr style:UIBarButtonItemStylePlain target:tzImagePickerVc action:@selector(cancelButtonClick)];
@@ -150,7 +152,7 @@ static CGFloat itemMargin = 5;
     _collectionView.dataSource = self;
     _collectionView.delegate = self;
     _collectionView.alwaysBounceHorizontal = NO;
-    _collectionView.contentInset = UIEdgeInsetsMake(itemMargin, itemMargin, itemMargin, itemMargin);
+    _collectionView.contentInset = UIEdgeInsetsMake(itemMargin, contentInsetSides, itemMargin, contentInsetSides);
     
     if (_showTakePhotoBtn && tzImagePickerVc.allowTakePicture ) {
         _collectionView.contentSize = CGSizeMake(self.view.tz_width, ((_model.count + self.columnNumber) / self.columnNumber) * self.view.tz_width);
@@ -160,6 +162,8 @@ static CGFloat itemMargin = 5;
     [self.view addSubview:_collectionView];
     [_collectionView registerClass:[TZAssetCell class] forCellWithReuseIdentifier:@"TZAssetCell"];
     [_collectionView registerClass:[TZAssetCameraCell class] forCellWithReuseIdentifier:@"TZAssetCameraCell"];
+    [_collectionView registerClass:[UICollectionReusableView class] forSupplementaryViewOfKind:UICollectionElementKindSectionHeader withReuseIdentifier:@"TZCollectionViewHeader"];
+
 }
 
 - (void)viewWillAppear:(BOOL)animated {
@@ -277,8 +281,7 @@ static CGFloat itemMargin = 5;
         collectionViewHeight = tzImagePickerVc.showSelectBtn ? self.view.tz_height - toolBarHeight : self.view.tz_height;
     }
     _collectionView.frame = CGRectMake(0, top, self.view.tz_width, collectionViewHeight);
-    CGFloat itemWH = (self.view.tz_width - (self.columnNumber + 1) * itemMargin) / self.columnNumber;
-    _layout.itemSize = CGSizeMake(itemWH, itemWH);
+    CGFloat itemWH = (self.view.tz_width - (self.columnNumber - 1) * itemMargin - 2 * contentInsetSides - 1) / self.columnNumber;    _layout.itemSize = CGSizeMake(itemWH, itemWH);
     _layout.minimumInteritemSpacing = itemMargin;
     _layout.minimumLineSpacing = itemMargin;
     [_collectionView setCollectionViewLayout:_layout];
@@ -421,12 +424,28 @@ static CGFloat itemMargin = 5;
 }
 
 #pragma mark - UICollectionViewDataSource && Delegate
+- (NSInteger)numberOfSectionsInCollectionView:(UICollectionView *)collectionView
+{
+    TZImagePickerController *tzImagePickerVc = (TZImagePickerController *)self.navigationController;
+    if (tzImagePickerVc.classifyByDate) {
+        return _models.count;
+    }else {
+        return 1;
+    }
+}
+
 
 - (NSInteger)collectionView:(UICollectionView *)collectionView numberOfItemsInSection:(NSInteger)section {
+    TZImagePickerController *tzImagePickerVc = (TZImagePickerController *)self.navigationController;
     if (_showTakePhotoBtn) {
         TZImagePickerController *tzImagePickerVc = (TZImagePickerController *)self.navigationController;
         if (tzImagePickerVc.allowPickingImage && tzImagePickerVc.allowTakePicture) {
             return _models.count + 1;
+        }
+    }else {
+        if (tzImagePickerVc.classifyByDate) {
+            NSDictionary *picArr = _models[section][@"videos"];
+            return picArr.count;
         }
     }
     return _models.count;
@@ -447,7 +466,13 @@ static CGFloat itemMargin = 5;
     cell.photoSelImageName = tzImagePickerVc.photoSelImageName;
     TZAssetModel *model;
     if (tzImagePickerVc.sortAscendingByModificationDate || !_showTakePhotoBtn) {
-        model = _models[indexPath.row];
+        if (tzImagePickerVc.classifyByDate){
+            NSArray *picArr = _models[indexPath.section][@"videos"];
+            model = picArr[indexPath.row];
+        }else {
+            model = _models[indexPath.row];
+        }
+
     } else {
         model = _models[indexPath.row - 1];
     }
@@ -493,6 +518,42 @@ static CGFloat itemMargin = 5;
     return cell;
 }
 
+- (UICollectionReusableView *)collectionView:(UICollectionView *)collectionView
+           viewForSupplementaryElementOfKind:(NSString *)kind
+                                 atIndexPath:(NSIndexPath *)indexPath {
+    
+    UICollectionReusableView *view = [collectionView dequeueReusableSupplementaryViewOfKind:UICollectionElementKindSectionHeader
+                                                       withReuseIdentifier:@"TZCollectionViewHeader"
+                                                              forIndexPath:indexPath];
+    
+    TZImagePickerController *tzImagePickerVc = (TZImagePickerController *)self.navigationController;
+    BOOL selectState = [tzImagePickerVc.selectedSections containsObject:indexPath] ? YES : NO;
+    NSString *dateStr = _models[indexPath.section][@"date"];
+    
+    TZAssetHeaderView *header;
+    if (view.subviews.count > 0) {
+        header = view.subviews.firstObject;
+    }else {
+        header = [[TZAssetHeaderView alloc] initWithFrame:view.bounds];
+        header.delegate = self;
+        [view addSubview:header];
+    }
+    [header loadDate:dateStr selectState:selectState];
+    header.curIndexPath = indexPath;
+    
+    
+    return view;
+}
+
+- (CGSize)collectionView:(UICollectionView *)collectionView layout:(UICollectionViewLayout*)collectionViewLayout
+referenceSizeForHeaderInSection:(NSInteger)section
+{
+    return CGSizeMake([UIScreen mainScreen].bounds.size.width, 54);
+}
+
+
+
+
 - (void)collectionView:(UICollectionView *)collectionView didSelectItemAtIndexPath:(NSIndexPath *)indexPath {
     // take a photo / 去拍照
     TZImagePickerController *tzImagePickerVc = (TZImagePickerController *)self.navigationController;
@@ -530,6 +591,84 @@ static CGFloat itemMargin = 5;
         [self pushPhotoPrevireViewController:photoPreviewVc];
     }
 }
+
+#pragma mark - TZAssetHeaderViewDelegate
+- (void)didSelectedAllPhoto:(NSIndexPath *)indexpath selectBtn:(UIButton *)sender{
+    NSInteger section = indexpath.section;
+    NSDictionary *sectionDic = _models[section];
+    NSArray *photoArr = sectionDic[@"videos"];
+    
+    TZImagePickerController *tzImagePickerVc = (TZImagePickerController *)self.navigationController;
+    if (!sender.selected) {
+        //全部选中
+        if (tzImagePickerVc.selectedModels.count + photoArr.count > tzImagePickerVc.maxImagesCount) {
+            NSString *title = [NSString stringWithFormat:[NSBundle tz_localizedStringForKey:@"Select a maximum of %zd photos"], tzImagePickerVc.maxImagesCount];
+            [tzImagePickerVc showAlertWithTitle:title];
+        }else {
+            [photoArr enumerateObjectsUsingBlock:^(TZAssetModel *obj, NSUInteger idx, BOOL * _Nonnull stop) {
+                NSIndexPath *cellIndexPath = [NSIndexPath indexPathForItem:idx inSection:section];
+                TZAssetCell *cell = (TZAssetCell *)[_collectionView cellForItemAtIndexPath:cellIndexPath];
+                cell.selectPhotoButton.selected = YES;
+                obj.isSelected = YES;
+                [cell updatePhotoBtnState:YES];
+                [tzImagePickerVc.selectedModels addObject:obj];
+                [self refreshBottomToolBarStatus];
+            }];
+            sender.selected = YES;
+            [tzImagePickerVc.selectedSections addObject:indexpath];
+        }
+        
+    }else {
+        //取消选中
+        [photoArr enumerateObjectsUsingBlock:^(TZAssetModel *obj, NSUInteger idx, BOOL * _Nonnull stop) {
+            NSIndexPath *cellIndexPath = [NSIndexPath indexPathForItem:idx inSection:section];
+            TZAssetCell *cell = (TZAssetCell *)[_collectionView cellForItemAtIndexPath:cellIndexPath];
+            cell.selectPhotoButton.selected = NO;
+            obj.isSelected = NO;
+            [cell updatePhotoBtnState:NO];
+            NSArray *selectedModels = [NSArray arrayWithArray:tzImagePickerVc.selectedModels];
+            for (TZAssetModel *model_item in selectedModels) {
+                if ([[[TZImageManager manager] getAssetIdentifier:obj.asset] isEqualToString:[[TZImageManager manager] getAssetIdentifier:model_item.asset]]) {
+                    [tzImagePickerVc.selectedModels removeObject:model_item];
+                    break;
+                }
+            }
+            [self refreshBottomToolBarStatus];
+        }];
+        sender.selected = NO;
+        [tzImagePickerVc.selectedSections removeObject:indexpath];
+    }
+    
+    //    [photoArr enumerateObjectsUsingBlock:^(TZAssetModel *obj, NSUInteger idx, BOOL * _Nonnull stop) {
+    //        NSIndexPath *cellIndexPath = [NSIndexPath indexPathForItem:idx inSection:section];
+    //        TZAssetCell *cell = (TZAssetCell *)[_collectionView cellForItemAtIndexPath:cellIndexPath];
+    //        if (selected) {
+    //            if (tzImagePickerVc.selectedModels.count < tzImagePickerVc.maxImagesCount) {
+    //                cell.selectPhotoButton.selected = YES;
+    //                obj.isSelected = YES;
+    //                [cell updatePhotoBtnState:YES];
+    //                [tzImagePickerVc.selectedModels addObject:obj];
+    //                [self refreshBottomToolBarStatus];
+    //            } else {
+    //                NSString *title = [NSString stringWithFormat:[NSBundle tz_localizedStringForKey:@"Select a maximum of %zd photos"], tzImagePickerVc.maxImagesCount];
+    //                [tzImagePickerVc showAlertWithTitle:title];
+    //            }
+    //        }else {
+    //            cell.selectPhotoButton.selected = NO;
+    //            obj.isSelected = NO;
+    //            [cell updatePhotoBtnState:NO];
+    //            NSArray *selectedModels = [NSArray arrayWithArray:tzImagePickerVc.selectedModels];
+    //            for (TZAssetModel *model_item in selectedModels) {
+    //                if ([[[TZImageManager manager] getAssetIdentifier:obj.asset] isEqualToString:[[TZImageManager manager] getAssetIdentifier:model_item.asset]]) {
+    //                    [tzImagePickerVc.selectedModels removeObject:model_item];
+    //                    break;
+    //                }
+    //            }
+    //            [self refreshBottomToolBarStatus];
+    //        }
+    //    }];
+}
+
 
 #pragma mark - UIScrollViewDelegate
 
@@ -678,10 +817,10 @@ static CGFloat itemMargin = 5;
 }
 
 - (void)checkSelectedModels {
+    TZImagePickerController *tzImagePickerVc = (TZImagePickerController *)self.navigationController;
     for (TZAssetModel *model in _models) {
         model.isSelected = NO;
         NSMutableArray *selectedAssets = [NSMutableArray array];
-        TZImagePickerController *tzImagePickerVc = (TZImagePickerController *)self.navigationController;
         for (TZAssetModel *model in tzImagePickerVc.selectedModels) {
             [selectedAssets addObject:model.asset];
         }
@@ -689,7 +828,54 @@ static CGFloat itemMargin = 5;
             model.isSelected = YES;
         }
     }
+    if (tzImagePickerVc.classifyByDate) {
+        _models = [self classifyModelsByDate:_model.models];
+    }
 }
+
+- (NSMutableArray *)classifyModelsByDate:(NSArray *)models {
+    
+    NSMutableArray *totalVideoArray = [NSMutableArray array];
+    NSMutableArray *dailyVideoArray = [NSMutableArray array];
+    
+    if (models != nil && models.count > 0) {
+        TZAssetModel *tzAsset = models.firstObject;
+        PHAsset *asset = tzAsset.asset;
+        NSString *lastDate = [self stringFromFomateDate:asset.creationDate];
+        
+        for (NSInteger i = 0; i < models.count; i++) {
+            
+            TZAssetModel *tzAsset = models[i];
+            PHAsset *curAsset = tzAsset.asset;
+            NSString *newDate = [self stringFromFomateDate:curAsset.creationDate];
+            
+            if ([newDate isEqualToString:lastDate]) {
+                [dailyVideoArray addObject:tzAsset];
+                
+                if (i == models.count - 1) {
+                    NSDictionary *dailyVideoDic = @{@"date":lastDate,@"videos":[NSArray arrayWithArray:dailyVideoArray]};
+                    [totalVideoArray addObject:dailyVideoDic];
+                }
+            }else {
+                NSDictionary *dailyVideoDic = @{@"date":lastDate,@"videos":[NSArray arrayWithArray:dailyVideoArray]};
+                [totalVideoArray addObject:dailyVideoDic];
+                lastDate = newDate;
+                [dailyVideoArray removeAllObjects];
+                [dailyVideoArray addObject:tzAsset];
+            }
+        }
+    }
+    return totalVideoArray;
+}
+
+- (NSString *)stringFromFomateDate:(NSDate *)date
+{
+    NSDateFormatter *dateFormatter = [[NSDateFormatter alloc] init];
+    [dateFormatter setDateFormat:@"YYYY/MM/dd"];
+    NSString *dateString = [dateFormatter stringFromDate:date];
+    return dateString;
+}
+
 
 #pragma mark - UIAlertViewDelegate
 
@@ -762,7 +948,7 @@ static CGFloat itemMargin = 5;
             _collectionView.hidden = YES;
             [_collectionView reloadData];
             
-            _shouldScrollToBottom = YES;
+            _shouldScrollToBottom = NO;
             [self scrollCollectionViewToBottom];
         }];
     }];
