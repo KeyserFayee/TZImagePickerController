@@ -20,7 +20,8 @@
 
 @interface TZPhotoPickerController ()<UICollectionViewDataSource,UICollectionViewDelegate,UIImagePickerControllerDelegate,UINavigationControllerDelegate,UIAlertViewDelegate,TZAssetHeaderViewDelegate> {
     NSMutableArray *_models;
-    
+    NSMutableArray *_originalModels;
+
     UIView *_bottomToolBar;
     UIButton *_previewButton;
     UIButton *_doneButton;
@@ -565,7 +566,18 @@ referenceSizeForHeaderInSection:(NSInteger)section
     if (!tzImagePickerVc.sortAscendingByModificationDate && _showTakePhotoBtn) {
         index = indexPath.row - 1;
     }
-    TZAssetModel *model = _models[index];
+    
+    if (tzImagePickerVc.classifyByDate) {
+        if (indexPath.section == 0) {
+            index = indexPath.row;
+        }else {
+            for (NSInteger i =0; i < indexPath.section; i ++) {
+                NSArray *photoArr = _models[i][@"videos"];
+                index += photoArr.count;
+            }
+        }
+    }
+    TZAssetModel *model = tzImagePickerVc.classifyByDate ? _originalModels[index] : _models[index];
     if (model.type == TZAssetModelMediaTypeVideo && !tzImagePickerVc.allowPickingMultipleVideo) {
         if (tzImagePickerVc.selectedModels.count > 0) {
             TZImagePickerController *imagePickerVc = (TZImagePickerController *)self.navigationController;
@@ -587,7 +599,7 @@ referenceSizeForHeaderInSection:(NSInteger)section
     } else {
         TZPhotoPreviewController *photoPreviewVc = [[TZPhotoPreviewController alloc] init];
         photoPreviewVc.currentIndex = index;
-        photoPreviewVc.models = _models;
+        photoPreviewVc.models = tzImagePickerVc.classifyByDate ? _originalModels : _models;
         [self pushPhotoPrevireViewController:photoPreviewVc];
     }
 }
@@ -638,7 +650,8 @@ referenceSizeForHeaderInSection:(NSInteger)section
         sender.selected = NO;
         [tzImagePickerVc.selectedSections removeObject:indexpath];
     }
-    
+    [_collectionView reloadData];
+
     //    [photoArr enumerateObjectsUsingBlock:^(TZAssetModel *obj, NSUInteger idx, BOOL * _Nonnull stop) {
     //        NSIndexPath *cellIndexPath = [NSIndexPath indexPathForItem:idx inSection:section];
     //        TZAssetCell *cell = (TZAssetCell *)[_collectionView cellForItemAtIndexPath:cellIndexPath];
@@ -829,6 +842,7 @@ referenceSizeForHeaderInSection:(NSInteger)section
         }
     }
     if (tzImagePickerVc.classifyByDate) {
+        _originalModels = [NSMutableArray arrayWithArray:_models];
         _models = [self classifyModelsByDate:_model.models];
     }
 }
