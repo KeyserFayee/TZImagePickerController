@@ -42,6 +42,7 @@
 @property (strong, nonatomic) UICollectionViewFlowLayout *layout;
 @property (nonatomic, strong) UIImagePickerController *imagePickerVc;
 @property (strong, nonatomic) CLLocation *location;
+@property (nonatomic, assign) BOOL onlyRefreshCheckBtn;
 @end
 
 static CGSize AssetGridThumbnailSize;
@@ -163,7 +164,7 @@ static CGFloat contentInsetSides = 15;
     [self.view addSubview:_collectionView];
     [_collectionView registerClass:[TZAssetCell class] forCellWithReuseIdentifier:@"TZAssetCell"];
     [_collectionView registerClass:[TZAssetCameraCell class] forCellWithReuseIdentifier:@"TZAssetCameraCell"];
-    [_collectionView registerClass:[UICollectionReusableView class] forSupplementaryViewOfKind:UICollectionElementKindSectionHeader withReuseIdentifier:@"TZCollectionViewHeader"];
+    [_collectionView registerClass:[TZAssetHeaderView class] forSupplementaryViewOfKind:UICollectionElementKindSectionHeader withReuseIdentifier:@"TZCollectionViewHeader"];
 
 }
 
@@ -177,8 +178,13 @@ static CGFloat contentInsetSides = 15;
     CGSize cellSize = ((UICollectionViewFlowLayout *)_collectionView.collectionViewLayout).itemSize;
     AssetGridThumbnailSize = CGSizeMake(cellSize.width * scale, cellSize.height * scale);
     
+    
     if (!_models) {
+        //第一次进入加载数据
         [self fetchAssetModels];
+    }else {
+        //从图片预览返回，刷新全选按钮状态
+        [self updateSelectedSections];
     }
 }
 
@@ -478,18 +484,23 @@ static CGFloat contentInsetSides = 15;
         model = _models[indexPath.row - 1];
     }
     cell.allowPickingGif = tzImagePickerVc.allowPickingGif;
+    cell.onlyRefreshCheckBtn = self.onlyRefreshCheckBtn;
     cell.model = model;
     cell.showSelectBtn = tzImagePickerVc.showSelectBtn;
     cell.allowPreview = tzImagePickerVc.allowPreview;
+    cell.curIndexPath = indexPath;
     
     __weak typeof(cell) weakCell = cell;
     __weak typeof(self) weakSelf = self;
     __weak typeof(_numberImageView.layer) weakLayer = _numberImageView.layer;
-    cell.didSelectPhotoBlock = ^(BOOL isSelected) {
+    cell.didSelectPhotoBlock = ^(BOOL isSelected , NSIndexPath *indexPath) {
         __strong typeof(weakCell) strongCell = weakCell;
         __strong typeof(weakSelf) strongSelf = weakSelf;
         __strong typeof(weakLayer) strongLayer = weakLayer;
         TZImagePickerController *tzImagePickerVc = (TZImagePickerController *)strongSelf.navigationController;
+        
+//        TZAssetHeaderView *headerView = (TZAssetHeaderView *)[_collectionView supplementaryViewForElementKind:UICollectionElementKindSectionHeader atIndexPath:indexPath];
+        
         // 1. cancel select / 取消选择
         if (isSelected) {
             strongCell.selectPhotoButton.selected = NO;
@@ -514,6 +525,18 @@ static CGFloat contentInsetSides = 15;
                 [tzImagePickerVc showAlertWithTitle:title];
             }
         }
+//        headerView.selectAllBtn.selected = [strongSelf checkSectionSelectState:indexPath];
+        if ([strongSelf checkSectionSelectState:indexPath.section]) {
+            if (![tzImagePickerVc.selectedSections containsObject:@(indexPath.section)]) {
+                [tzImagePickerVc.selectedSections addObject:@(indexPath.section)];
+                [_collectionView reloadData];
+            }
+        }else {
+            if ([tzImagePickerVc.selectedSections containsObject:@(indexPath.section)]) {
+                [tzImagePickerVc.selectedSections removeObject:@(indexPath.section)];
+                [_collectionView reloadData];
+            }
+        }
         [UIView showOscillatoryAnimationWithLayer:strongLayer type:TZOscillatoryAnimationToSmaller];
     };
     return cell;
@@ -522,28 +545,25 @@ static CGFloat contentInsetSides = 15;
 - (UICollectionReusableView *)collectionView:(UICollectionView *)collectionView
            viewForSupplementaryElementOfKind:(NSString *)kind
                                  atIndexPath:(NSIndexPath *)indexPath {
+    UICollectionReusableView *reusableview = nil;
     
-    UICollectionReusableView *view = [collectionView dequeueReusableSupplementaryViewOfKind:UICollectionElementKindSectionHeader
-                                                       withReuseIdentifier:@"TZCollectionViewHeader"
-                                                              forIndexPath:indexPath];
-    
-    TZImagePickerController *tzImagePickerVc = (TZImagePickerController *)self.navigationController;
-    BOOL selectState = [tzImagePickerVc.selectedSections containsObject:indexPath] ? YES : NO;
-    NSString *dateStr = _models[indexPath.section][@"date"];
-    
-    TZAssetHeaderView *header;
-    if (view.subviews.count > 0) {
-        header = view.subviews.firstObject;
-    }else {
-        header = [[TZAssetHeaderView alloc] initWithFrame:view.bounds];
-        header.delegate = self;
-        [view addSubview:header];
+    if (kind == UICollectionElementKindSectionHeader) {
+        TZAssetHeaderView *headerView = (TZAssetHeaderView *)[collectionView dequeueReusableSupplementaryViewOfKind:UICollectionElementKindSectionHeader
+                                                                           withReuseIdentifier:@"TZCollectionViewHeader"
+                                                                                  forIndexPath:indexPath];
+        
+        TZImagePickerController *tzImagePickerVc = (TZImagePickerController *)self.navigationController;
+        BOOL selectState = [tzImagePickerVc.selectedSections containsObject:@(indexPath.section)] ? YES : NO;
+        NSString *dateStr = _models[indexPath.section][@"date"];
+        
+        headerView.delegate = self;
+        [headerView loadDate:dateStr selectState:selectState];
+        headerView.curIndexPath = indexPath;
+        
+        reusableview = headerView;
     }
-    [header loadDate:dateStr selectState:selectState];
-    header.curIndexPath = indexPath;
     
-    
-    return view;
+    return reusableview;
 }
 
 - (CGSize)collectionView:(UICollectionView *)collectionView layout:(UICollectionViewLayout*)collectionViewLayout
@@ -623,11 +643,13 @@ referenceSizeForHeaderInSection:(NSInteger)section
                 cell.selectPhotoButton.selected = YES;
                 obj.isSelected = YES;
                 [cell updatePhotoBtnState:YES];
-                [tzImagePickerVc.selectedModels addObject:obj];
+                if (![tzImagePickerVc.selectedModels containsObject:obj]) {
+                    [tzImagePickerVc.selectedModels addObject:obj];
+                }
                 [self refreshBottomToolBarStatus];
             }];
             sender.selected = YES;
-            [tzImagePickerVc.selectedSections addObject:indexpath];
+            [tzImagePickerVc.selectedSections addObject:@(indexpath.section)];
         }
         
     }else {
@@ -648,7 +670,7 @@ referenceSizeForHeaderInSection:(NSInteger)section
             [self refreshBottomToolBarStatus];
         }];
         sender.selected = NO;
-        [tzImagePickerVc.selectedSections removeObject:indexpath];
+        [tzImagePickerVc.selectedSections removeObject:@(indexpath.section)];
     }
     [_collectionView reloadData];
 
@@ -856,6 +878,7 @@ referenceSizeForHeaderInSection:(NSInteger)section
         TZAssetModel *tzAsset = models.firstObject;
         PHAsset *asset = tzAsset.asset;
         NSString *lastDate = [self stringFromFomateDate:asset.creationDate];
+        NSInteger sectionNum = 0;
         
         for (NSInteger i = 0; i < models.count; i++) {
             
@@ -865,6 +888,7 @@ referenceSizeForHeaderInSection:(NSInteger)section
             
             if ([newDate isEqualToString:lastDate]) {
                 [dailyVideoArray addObject:tzAsset];
+                tzAsset.sectionNum = sectionNum;
                 
                 if (i == models.count - 1) {
                     NSDictionary *dailyVideoDic = @{@"date":lastDate,@"videos":[NSArray arrayWithArray:dailyVideoArray]};
@@ -874,6 +898,8 @@ referenceSizeForHeaderInSection:(NSInteger)section
                 NSDictionary *dailyVideoDic = @{@"date":lastDate,@"videos":[NSArray arrayWithArray:dailyVideoArray]};
                 [totalVideoArray addObject:dailyVideoDic];
                 lastDate = newDate;
+                sectionNum ++;
+                tzAsset.sectionNum = sectionNum;
                 [dailyVideoArray removeAllObjects];
                 [dailyVideoArray addObject:tzAsset];
             }
@@ -890,6 +916,38 @@ referenceSizeForHeaderInSection:(NSInteger)section
     return dateString;
 }
 
+- (BOOL)checkSectionSelectState:(NSInteger )section
+{
+    NSArray *photoArr = _models[section][@"videos"];
+    __block BOOL selectALL = YES;
+    [photoArr enumerateObjectsUsingBlock:^(TZAssetModel *obj, NSUInteger idx, BOOL * _Nonnull stop) {
+        if (!obj.isSelected) {
+            selectALL = NO;
+            *stop = YES;
+        }
+    }];
+    return selectALL;
+}
+
+- (void)updateSelectedSections
+{
+    TZImagePickerController *tzImagePickerVc = (TZImagePickerController *)self.navigationController;
+    
+    __weak typeof(tzImagePickerVc) weakVc = tzImagePickerVc;
+    [tzImagePickerVc.selectedModels enumerateObjectsUsingBlock:^(TZAssetModel * _Nonnull obj, NSUInteger idx, BOOL * _Nonnull stop) {
+        if ([self checkSectionSelectState:obj.sectionNum]) {
+            if (![weakVc.selectedSections containsObject:@(obj.sectionNum)]) {
+                [weakVc.selectedSections addObject:@(obj.sectionNum)];
+                [_collectionView reloadData];
+            }
+        }else {
+            if ([weakVc.selectedSections containsObject:@(obj.sectionNum)]) {
+                [weakVc.selectedSections removeObject:@(obj.sectionNum)];
+                [_collectionView reloadData];
+            }
+        }
+    }];
+}
 
 #pragma mark - UIAlertViewDelegate
 

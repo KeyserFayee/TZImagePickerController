@@ -22,7 +22,7 @@ typedef enum : NSUInteger {
 
 @property (weak, nonatomic) UIButton *selectPhotoButton;
 @property (nonatomic, strong) TZAssetModel *model;
-@property (nonatomic, copy) void (^didSelectPhotoBlock)(BOOL);
+@property (nonatomic, copy) void (^didSelectPhotoBlock)(BOOL,NSIndexPath*);
 @property (nonatomic, assign) TZAssetCellType type;
 @property (nonatomic, assign) BOOL allowPickingGif;
 @property (nonatomic, assign) BOOL allowPickingMultipleVideo;
@@ -34,6 +34,9 @@ typedef enum : NSUInteger {
 
 @property (nonatomic, assign) BOOL showSelectBtn;
 @property (assign, nonatomic) BOOL allowPreview;
+
+@property (nonatomic, strong) NSIndexPath *curIndexPath;
+@property (nonatomic, assign) BOOL onlyRefreshCheckBtn;
 
 - (void)updatePhotoBtnState:(BOOL)state;
 

@@ -42,6 +42,7 @@
         }
         if ([self.representedAssetIdentifier isEqualToString:[[TZImageManager manager] getAssetIdentifier:model.asset]]) {
             self.imageView.image = photo;
+
         } else {
             // NSLog(@"this cell is showing other asset");
             [[PHImageManager defaultManager] cancelImageRequest:self.imageRequestID];
@@ -110,7 +111,7 @@
 
 - (void)selectPhotoButtonClick:(UIButton *)sender {
     if (self.didSelectPhotoBlock) {
-        self.didSelectPhotoBlock(sender.isSelected);
+        self.didSelectPhotoBlock(sender.isSelected,_curIndexPath);
     }
     self.selectImageView.image = sender.isSelected ? [UIImage imageNamedFromMyBundle:self.photoSelImageName] : [UIImage imageNamedFromMyBundle:self.photoDefImageName];
     if (sender.isSelected) {

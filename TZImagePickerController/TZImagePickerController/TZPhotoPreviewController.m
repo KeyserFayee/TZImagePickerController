@@ -51,6 +51,7 @@
     if (!self.models.count) {
         self.models = [NSMutableArray arrayWithArray:_tzImagePickerVc.selectedModels];
         _assetsTemp = [NSMutableArray arrayWithArray:_tzImagePickerVc.selectedAssets];
+        
     }
     [self configCollectionView];
     [self configCustomNaviBar];

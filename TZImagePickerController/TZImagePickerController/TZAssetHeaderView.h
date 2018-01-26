@@ -15,13 +15,13 @@
 
 @end
 
-@interface TZAssetHeaderView : UIView
+@interface TZAssetHeaderView : UICollectionReusableView
 
 @property (nonatomic, weak) id <TZAssetHeaderViewDelegate> delegate;
-
 /** 当前header在相册中的位置*/
 @property (nonatomic, strong) NSIndexPath *curIndexPath;
-
+/** 全部选中按钮*/
+@property (nonatomic, strong) UIButton *selectAllBtn;
 
 - (void)loadDate:(NSString *)date selectState:(BOOL)state;
 

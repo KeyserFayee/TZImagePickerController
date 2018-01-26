@@ -10,7 +10,6 @@
 @interface TZAssetHeaderView()
 
 /** 全部选中按钮*/
-@property (nonatomic, strong) UIButton *selectAllBtn;
 @property (nonatomic, strong) UILabel *dateLabel;
 
 @end
